@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Uploader</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+        }
+        #loading {
+            display: none; /* Hide initially */
+            font-size: 20px;
+            color: blue;
+            margin-top: 20px;
+        }
+        #progress {
+            width: 100%;
+            background-color: #f3f3f3;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: none; /* Hide initially */
+        }
+        #progress-bar {
+            height: 20px;
+            width: 0;
+            background-color: #4caf50;
+            border-radius: 5px;
+            transition: width 0.4s; /* Smooth transition */
+        }
+    </style>
+</head>
+<body>
+    <h1>Upload PDF</h1>
+    <form id="uploadForm" action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".pdf" required>
+        <button type="submit">Upload</button>
+    </form>
+
+    <div id="loading">Loading, please wait...</div>
+    <div id="progress">
+        <div id="progress-bar"></div>
+    </div>
+
+    <script>
+        const uploadForm = document.getElementById('uploadForm');
+        const loadingMessage = document.getElementById('loading');
+        const progressBarContainer = document.getElementById('progress');
+        const progressBar = document.getElementById('progress-bar');
+    
+        uploadForm.addEventListener('submit', function() {
+            loadingMessage.style.display = 'block'; // Show loading message
+            progressBarContainer.style.display = 'block'; // Show progress bar
+            progressBar.style.width = '0%'; // Reset progress bar
+            updateProgress(); // Start updating progress
+        });
+    
+        function updateProgress() {
+            fetch('/progress')
+                .then(response => response.json())
+                .then(data => {
+                    progressBar.style.width = data.progress + '%'; // Update progress bar width
+                    if (data.progress < 100) {
+                        setTimeout(updateProgress, 100); // Check progress every 100ms
+                    } else {
+                        loadingMessage.textContent = 'Conversion completed!'; // Update message when done
+                    }
+                })
+                .catch(error => console.error('Error fetching progress:', error)); // Handle errors
+        }
+    </script>
+    
+</body>
+</html>

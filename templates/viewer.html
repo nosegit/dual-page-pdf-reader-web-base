@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Viewer</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+        }
+        .navigation {
+            margin: 20px;
+            display: flex; /* Make the navigation a flex container */
+            justify-content: center; /* Center the buttons */
+            gap: 10px; /* Space between buttons */
+        }
+        .images-container {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            overflow: hidden; /* Prevents images from overflowing */
+        }
+        img {
+            max-width: 45%; /* Ensures the images take up 45% of the width each */
+            height: auto; /* Maintain aspect ratio */
+            margin: 10px; /* Space between images */
+        }
+    </style>
+</head>
+<body>
+    <div class="navigation">
+        <!-- Previous Button -->
+        <form action="{{ url_for('viewer') }}" method="get">
+            {% if page1 > 0 %}
+                <input type="hidden" name="page1" value="{{ page1 - 2 }}">
+                <input type="hidden" name="page2" value="{{ page2 - 2 }}">
+                <button type="submit">Previous</button>
+            {% endif %}
+        </form>
+
+        <!-- Next Button -->
+        <form action="{{ url_for('viewer') }}" method="get">
+            {% if page2 < total_pages - 1 %}
+                <input type="hidden" name="page1" value="{{ page1 + 2 }}">
+                <input type="hidden" name="page2" value="{{ page2 + 2 }}">
+                <button type="submit">Next</button>
+            {% endif %}
+        </form>
+
+        <!-- Swap Button -->
+        <form action="{{ url_for('viewer') }}" method="get">
+            <input type="hidden" name="page1" value="{{ page2 }}">
+            <input type="hidden" name="page2" value="{{ page1 }}">
+            <button type="submit">Swap Pages</button>
+        </form>
+
+        <!-- Shift/Unshift Button -->
+        <form action="{{ url_for('viewer') }}" method="get" class="shift-button" id="shiftForm">
+            <input type="hidden" name="page1" id="page1" value="{{ page1 }}">
+            <input type="hidden" name="page2" id="page2" value="{{ page2 }}">
+            <input type="hidden" name="shift" id="shift" value="{{ request.args.get('shift', 'true') }}">
+            <button type="button" id="shiftButton">{{ 'Unshift' if request.args.get('shift', 'true') == 'false' else 'Shift' }}</button>
+        </form>
+    </div>
+
+    <div class="images-container">
+        <img src="{{ url_for('images', filename='page_' + (page1 + 1) | string + '.png') }}" alt="Page {{ page1 + 1 }}">
+        <img src="{{ url_for('images', filename='page_' + (page2 + 1) | string + '.png') }}" alt="Page {{ page2 + 1 }}">
+    </div>
+
+    <script>
+        // Adjust image sizes based on window resize
+        window.addEventListener('resize', function() {
+            const images = document.querySelectorAll('img');
+            images.forEach(image => {
+                image.style.maxWidth = (window.innerWidth * 0.45) + 'px'; // 45% of window width
+            });
+        });
+
+        // Shift/Unshift Button functionality
+        document.getElementById('shiftButton').addEventListener('click', function() {
+            const page1Input = document.getElementById('page1');
+            const page2Input = document.getElementById('page2');
+            const shiftInput = document.getElementById('shift');
+
+            if (shiftInput.value === 'true') {
+                // Perform Shift: Increment both pages by 1
+                page1Input.value = parseInt(page1Input.value) + 1;
+                page2Input.value = parseInt(page2Input.value) + 1;
+                shiftInput.value = 'false'; // Change state to Unshift
+                this.textContent = 'Unshift'; // Change button text to Unshift
+            } else {
+                // Perform Unshift: Decrement both pages by 1
+                page1Input.value = parseInt(page1Input.value) - 1;
+                page2Input.value = parseInt(page2Input.value) - 1;
+                shiftInput.value = 'true'; // Change state back to Shift
+                this.textContent = 'Shift'; // Change button text to Shift
+            }
+
+            // Delay form submission to allow text change to be visible
+            setTimeout(() => {
+                document.getElementById('shiftForm').submit(); // Submit the form
+            }, 100); // Adjust time delay as necessary
+        });
+    </script>
+</body>
+</html>
