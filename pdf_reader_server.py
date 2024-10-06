@@ -119,7 +119,8 @@ class PDFReader:
 
 @app.route('/')
 def index():
-    session['progress'] = 0
+    global progress_value
+    progress_value = 0
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
@@ -157,6 +158,7 @@ def upload_file():
                 image_path = os.path.join(app.config['IMAGE_FOLDER'], f"page_{i + 1}.png")
                 page.save(image_path, 'PNG')
             progress_value = 66 + (i/total_pages) * 34
+            print(f"Saving images: {progress_value}%")  # Debug print statement
 
         # Redirect to dual-page view with the number of pages
         return redirect(url_for('viewer', page1=0, page2=1))

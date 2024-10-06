@@ -65,7 +65,8 @@
                 .then(data => {
                     progressBar.style.width = data.progress + '%'; // Update progress bar width
                     if (data.progress < 100) {
-                        setTimeout(updateProgress, 100); // Check progress every 100ms
+                        loadingMessage.innerHTML = `Loading, ${data.progress.toFixed(2)}%`; // Update with percentage
+                        setTimeout(updateProgress, 500); // Check progress every 500ms
                     } else {
                         loadingMessage.textContent = 'Conversion completed!'; // Update message when done
                     }
