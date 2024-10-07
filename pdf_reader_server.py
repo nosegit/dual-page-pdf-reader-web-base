@@ -1,11 +1,14 @@
 import os
+import math
 import shutil
 import multiprocessing
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session
 from werkzeug.utils import secure_filename
 from pdf2image import convert_from_path
 from PIL import Image
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader, PdfWriter
+from signal import signal, SIGPIPE, SIG_DFL  
+signal(SIGPIPE,SIG_DFL) 
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Required for session management
@@ -22,9 +25,16 @@ if not os.path.exists(UPLOAD_FOLDER):
 if not os.path.exists(IMAGE_FOLDER):
     os.makedirs(IMAGE_FOLDER)
 
-# Path to the Poppler bin folder
-script_dir = os.path.dirname(os.path.abspath(__file__))
-poppler_bin_path = os.path.join(script_dir, 'poppler-24.07.0', 'Library', 'bin')
+poppler_bin_path = ""
+if os.name == "nt":
+    print("Running on Windows")
+    # Path to the Poppler bin folder
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    poppler_bin_path = os.path.join(script_dir, 'poppler-24.07.0', 'Library', 'bin')
+elif os.name == "posix":
+    poppler_bin_path = "/usr/bin"
+    print("Running on Linux or another POSIX OS")
+
 
 progress_value = 0  # Global variable to track progress
 
@@ -35,24 +45,55 @@ class PDFReader:
         self.pages = []
         self.poppler_bin_path = poppler_bin_path
         self.progress = {'value': 0}  # Initialize progress tracking
+        self.batch_size = 40
+
+    def convert_to_image_files(self, file_path, batch_size):
+        global progress_value  # Use global variable
+        self.batch_size = batch_size
+
+        with open(file_path, 'rb') as pdf_file:
+            pdf_reader = PdfReader(pdf_file)
+            
+            file_name = os.path.basename(file_path).split(".pdf")[0]
+            directory_name = os.path.dirname(file_path)
+
+            # Iterate over all pages and save each batch pages as a separate PDF
+            for index, page_number in enumerate(range(0, len(pdf_reader.pages), batch_size)):
+                pdf_writer = PdfWriter()
+
+                for page_num in range(page_number,min(page_number+batch_size+1,len(pdf_reader.pages))):
+                    pdf_writer.add_page(pdf_reader.pages[page_num])
+                
+                output_pdf_path = os.path.join(directory_name, f"{ file_name }_{ index }.pdf" )
+                
+                # Write the page to a new PDF file
+                with open(output_pdf_path, 'wb') as output_pdf:
+                    pdf_writer.write(output_pdf)
+                
+                print(f"Saved page {page_number}:{min(page_number+batch_size+1,len(pdf_reader.pages)+1)} to {output_pdf_path}")
+
+                self.pages = []
+                self.convert_pdf_to_images(output_pdf_path)
+                self.shrink_pages_to_smallest()
+                self.save_images_concurrently(self.pages,app.config['IMAGE_FOLDER'],page_number)
+                progress_value = (index+1) / math.ceil(len(pdf_reader.pages)/batch_size ) *100
+
 
     def convert_pdf_to_images(self, file_path):
-        global progress_value  # Use global variable
 
         # Get total number of pages using PyPDF2
         with open(file_path, 'rb') as f:
             reader = PdfReader(f)
             total_pages = len(reader.pages)
 
-        batch_size = 40  # Define your batch size
         with multiprocessing.Manager() as manager:
             completed_count = manager.Value('i', 0)  # Shared variable to track completed tasks
 
             # Convert pages using multiprocessing
             with multiprocessing.Pool() as pool:
                 # Prepare the arguments for each batch
-                for batch_start in range(1, total_pages + 1, batch_size):
-                    batch_end = min(batch_start + batch_size - 1, total_pages)
+                for batch_start in range(1, total_pages + 1, self.batch_size):
+                    batch_end = min(batch_start + self.batch_size - 1, total_pages)
                     args = [(file_path, i, self.poppler_bin_path, completed_count, total_pages) for i in range(batch_start, batch_end + 1)]
 
                     # Process the batch
@@ -63,10 +104,7 @@ class PDFReader:
                         if page is not None:
                             self.pages.append(page)
 
-                    # Update progress bar for conversion (0-33%)
-                    completed_count.value += len(args)
-                    progress_value = (completed_count.value / total_pages) * 33
-                    print(f"Conversion Progress: {progress_value}%")  # Debug print statement
+                    print(f"Conversion started!!")
 
         return self.pages
 
@@ -81,7 +119,6 @@ class PDFReader:
             return None
 
     def shrink_pages_to_smallest(self):
-        global progress_value  # Use global variable
 
         # Find the smallest page size
         if not self.pages:
@@ -90,14 +127,13 @@ class PDFReader:
         smallest_width = min(page.size[0] for page in self.pages)
         smallest_height = min(page.size[1] for page in self.pages)
 
-        batch_size = 50  # Define your batch size
         with multiprocessing.Manager() as manager:
             completed_count = manager.Value('i', 0)  # Shared variable to track completed tasks
 
             # Resize all pages using multiprocessing
             with multiprocessing.Pool() as pool:
-                for i in range(0, len(self.pages), batch_size):
-                    batch = self.pages[i:i + batch_size]
+                for i in range(0, len(self.pages), self.batch_size):
+                    batch = self.pages[i:i + self.batch_size]
                     args = [(page, smallest_width, smallest_height, completed_count, len(batch)) for page in batch]
 
                     # Process the batch
@@ -106,16 +142,35 @@ class PDFReader:
                     # Append resized pages to pages list
                     self.pages[i:i + len(resized_batch)] = resized_batch
 
-                    # Update progress bar for resizing (50-100%)
-                    completed_count.value += len(args)
-                    progress_value = 33 + (completed_count.value / len(self.pages)) * 33
-                    print(f"Resizing Progress: {progress_value}%")  # Debug print statement
+                    print(f"Resizing Started!")  # Debug print statement
+
 
     @staticmethod
     def resize_page(page, width, height, completed_count, total_pages):
         resized_page = page.resize((width, height), Image.LANCZOS)
         return resized_page
 
+    def save_images_concurrently(self, pages, image_folder , page_offset):
+
+        #Function to save images concurrently using multiprocessing.
+        total_pages = len(pages)
+        pool_args = [(page, os.path.join(image_folder, f"page_{i+ page_offset + 1}.png")) for i, page in enumerate(pages)]
+
+        # Create a multiprocessing Pool to save images concurrently
+        with multiprocessing.Pool() as pool:
+            for i, success in enumerate(pool.imap_unordered(self.save_image, pool_args)):
+                print(f"Saving images: {page_offset + i + 1}")
+    
+    @staticmethod      
+    def save_image(args):
+        #Function to save a single image.
+        page, image_path = args
+        try:
+            page.save(image_path, 'PNG')
+            return True
+        except Exception as e:
+            print(f"Error saving image to {image_path}: {e}")
+            return False
 
 @app.route('/')
 def index():
@@ -147,18 +202,7 @@ def upload_file():
 
         # Convert the PDF to images
         pdf_reader = PDFReader(poppler_bin_path)
-        pdf_reader.convert_pdf_to_images(pdf_path)
-
-        # Resize images to the smallest dimensions
-        pdf_reader.shrink_pages_to_smallest()
-
-        total_pages = len(pdf_reader.pages)
-        for i, page in enumerate(pdf_reader.pages):
-            if page:
-                image_path = os.path.join(app.config['IMAGE_FOLDER'], f"page_{i + 1}.png")
-                page.save(image_path, 'PNG')
-            progress_value = 66 + (i/total_pages) * 34
-            print(f"Saving images: {progress_value}%")  # Debug print statement
+        pdf_reader.convert_to_image_files(pdf_path,40)
 
         # Redirect to dual-page view with the number of pages
         return redirect(url_for('viewer', page1=0, page2=1))
