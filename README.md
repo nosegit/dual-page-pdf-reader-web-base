@@ -9,7 +9,7 @@ this project for manga dual page reader in webbase
 |------------------|-----------|
 | Windows          | ✓         |
 | macOS            | untest         |
-| Linux            | untest         |
+| Linux            | ✓         |
 
 # Usage
 ### with out conda
@@ -42,4 +42,16 @@ this project for manga dual page reader in webbase
     # on browser
     127.0.0.1:5000 or ip_address:5000
     
+```
+
+### with docker
+``` bash
+    # build image 
+    sudo docker build -t pdf_reader_server_docker .
+
+    # run docker container
+    sudo docker run -p 5000:5000 pdf_reader_server_docker
+
+    # on browser
+    127.0.0.1:5000 or ip_address:5000
 ```
