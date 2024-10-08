@@ -70,13 +70,30 @@ class PDFReader:
                 with open(output_pdf_path, 'wb') as output_pdf:
                     pdf_writer.write(output_pdf)
                 
-                print(f"Saved page {page_number}:{min(page_number+batch_size+1,len(pdf_reader.pages)+1)} to {output_pdf_path}")
+                print(f"Saved page {page_number}-{min(page_number+batch_size+1,len(pdf_reader.pages)+1)} to {output_pdf_path}")
 
+                batch_percentage_begin = (index) / math.ceil(len(pdf_reader.pages)/batch_size ) * 100
+                batch_percentage = (1) / math.ceil(len(pdf_reader.pages)/batch_size ) * 100
+
+                # reset pages
                 self.pages = []
+                progress_value = batch_percentage_begin + 0.1
+
+                # Convert pdf to images
                 self.convert_pdf_to_images(output_pdf_path)
+                progress_value = batch_percentage_begin + (batch_percentage) * (1/3)
+
+                # Resize images
                 self.shrink_pages_to_smallest()
+                progress_value = batch_percentage_begin + (batch_percentage) * (2/3)
+
+                # Save images to files
                 self.save_images_concurrently(self.pages,app.config['IMAGE_FOLDER'],page_number)
-                progress_value = (index+1) / math.ceil(len(pdf_reader.pages)/batch_size ) *100
+                progress_value = batch_percentage_begin + (batch_percentage) * (3/3)
+
+                # Remove batched PDF
+                if os.path.exists(output_pdf_path):
+                    os.remove(output_pdf_path)
 
 
     def convert_pdf_to_images(self, file_path):
@@ -202,7 +219,11 @@ def upload_file():
 
         # Convert the PDF to images
         pdf_reader = PDFReader(poppler_bin_path)
-        pdf_reader.convert_to_image_files(pdf_path,40)
+        pdf_reader.convert_to_image_files(pdf_path,50)
+
+        # Remove original pdf file
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
 
         # Redirect to dual-page view with the number of pages
         return redirect(url_for('viewer', page1=0, page2=1))
